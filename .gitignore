@@ -1,0 +1,13 @@
+.deps/
+AGENT.MD
+build/
+dist/
+*.user
+__pycache__/
+.vs/
+.vscode/
+.idea/
+.DS_Store
+CMakeUserPresets.json
+*.log
+*.dSYM/

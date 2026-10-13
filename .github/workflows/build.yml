@@ -1,0 +1,77 @@
+name: Build Windows and macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2022
+          - platform: macos-arm64
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/cache/restore@v4
+        id: dependencies
+        with:
+          path: .deps
+          key: sdk-${{ matrix.platform }}-${{ hashFiles('scripts/prepare.py', 'scripts/build.ps1', 'scripts/build-macos.sh') }}
+          restore-keys: sdk-${{ matrix.platform }}-
+      - name: Build and test Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/build.ps1
+          python scripts/check_package.py
+          python tests/module-smoke.py --stress
+      - name: Build and test macOS
+        if: runner.os == 'macOS'
+        run: |
+          python3 -m pip install --disable-pip-version-check cmake==4.4.4 ninja==1.13.0
+          bash scripts/build-macos.sh
+          # Python needs the framework search path normally supplied by OBS.app.
+          DYLD_LIBRARY_PATH="$PWD/.deps/obs-runtime/OBS.app/Contents/Frameworks" python3 tests/module-smoke.py --stress
+      - name: Upload installation ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: OBS-Air-${{ matrix.platform }}
+          path: dist/OBS-Air-*-${{ matrix.platform }}.zip
+          if-no-files-found: error
+          retention-days: 7
+      - name: Save prepared SDK cache
+        if: always() && steps.dependencies.outputs.cache-hit != 'true' && hashFiles('.deps/openssl/lib/libcrypto.*') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .deps
+          key: ${{ steps.dependencies.outputs.cache-primary-key }}
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.platform }}
+          path: |
+            build/Testing/Temporary/LastTest.log
+            .deps/openssl-build.log
+          retention-days: 3

@@ -1,0 +1,2 @@
+* text=auto eol=lf
+scripts/install_obs-air.bat -text whitespace=cr-at-eol
